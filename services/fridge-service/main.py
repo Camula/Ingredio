@@ -1,6 +1,5 @@
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import jwt
 
 app = FastAPI()
@@ -13,41 +12,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SECRET_KEY = "secret"
-ALGORITHM = "HS256"
+SECRET = "secret"
 
-ingredients_db = {}
+fridges = {}
 
-class Ingredient(BaseModel):
-    name: str
-
-def get_user_email(authorization: str = Header(None, alias="Authorization")):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Brak tokena")
-    token = authorization.split(" ")[1]
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload["email"]
-    except:
-        raise HTTPException(status_code=401, detail="Nieprawidłowy token")
-
-@app.get("/ingredients")
-def get_ingredients(authorization: str = Header(None, alias="Authorization")):
-    email = get_user_email(authorization)
-    return ingredients_db.get(email, [])
+def get_user_email(auth_header):
+    token = auth_header.split(" ")[1]
+    decoded = jwt.decode(token, SECRET, algorithms=["HS256"])
+    return decoded.get("email")
 
 @app.post("/ingredients")
-def add_ingredient(item: Ingredient, authorization: str = Header(None, alias="Authorization")):
-    email = get_user_email(authorization)
-    if email not in ingredients_db:
-        ingredients_db[email] = []
-    ingredients_db[email].append(item.name)
-    return {"message": "Dodano składnik"}
+def add_ingredient(data: dict, Authorization: str = Header(None)):
+    email = get_user_email(Authorization)
+
+    if email not in fridges:
+        fridges[email] = []
+
+    fridges[email].append(data["name"])
+    return {"message": "ok"}
+
+@app.get("/ingredients")
+def get_ingredients(Authorization: str = Header(None)):
+    email = get_user_email(Authorization)
+    return fridges.get(email, [])
 
 @app.delete("/ingredients/{name}")
-def delete_ingredient(name: str, authorization: str = Header(None, alias="Authorization")):
-    email = get_user_email(authorization)
-    if email not in ingredients_db or name not in ingredients_db[email]:
-        raise HTTPException(status_code=404, detail="Nie znaleziono składnika")
-    ingredients_db[email].remove(name)
-    return {"message": "Usunięto składnik"}
+def delete_ingredient(name: str, Authorization: str = Header(None)):
+    email = get_user_email(Authorization)
+    if email in fridges and name in fridges[email]:
+        fridges[email].remove(name)
+    return {"message": "ok"}
+
+@app.delete("/ingredients")
+def clear_fridge(Authorization: str = Header(None)):
+    email = get_user_email(Authorization)
+    fridges[email] = []
+    return {"message": "ok"}
