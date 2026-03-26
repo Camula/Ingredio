@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 import jwt
+import sqlite3
 
 app = FastAPI()
 
@@ -14,7 +15,17 @@ app.add_middleware(
 
 SECRET = "secret"
 
-fridges = {}
+conn = sqlite3.connect("fridge.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS ingredients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT,
+    name TEXT
+)
+""")
+conn.commit()
 
 def get_user_email(auth_header):
     token = auth_header.split(" ")[1]
@@ -25,26 +36,46 @@ def get_user_email(auth_header):
 def add_ingredient(data: dict, Authorization: str = Header(None)):
     email = get_user_email(Authorization)
 
-    if email not in fridges:
-        fridges[email] = []
+    cursor.execute(
+        "INSERT INTO ingredients (email, name) VALUES (?, ?)",
+        (email, data["name"])
+    )
+    conn.commit()
 
-    fridges[email].append(data["name"])
     return {"message": "ok"}
 
 @app.get("/ingredients")
 def get_ingredients(Authorization: str = Header(None)):
     email = get_user_email(Authorization)
-    return fridges.get(email, [])
+
+    cursor.execute(
+        "SELECT name FROM ingredients WHERE email=?",
+        (email,)
+    )
+
+    rows = cursor.fetchall()
+    return [r[0] for r in rows]
 
 @app.delete("/ingredients/{name}")
 def delete_ingredient(name: str, Authorization: str = Header(None)):
     email = get_user_email(Authorization)
-    if email in fridges and name in fridges[email]:
-        fridges[email].remove(name)
+
+    cursor.execute(
+        "DELETE FROM ingredients WHERE email=? AND name=?",
+        (email, name)
+    )
+    conn.commit()
+
     return {"message": "ok"}
 
 @app.delete("/ingredients")
 def clear_fridge(Authorization: str = Header(None)):
     email = get_user_email(Authorization)
-    fridges[email] = []
+
+    cursor.execute(
+        "DELETE FROM ingredients WHERE email=?",
+        (email,)
+    )
+    conn.commit()
+
     return {"message": "ok"}
