@@ -68,3 +68,26 @@ export const RECIPE_CATEGORIES = [
   "Wegetariańskie",
   "Wegańskie"
 ];
+
+export const RECIPE_CATEGORY_GROUPS = [
+  {
+    title: "Rodzaj",
+    items: ["Dowolna", "Śniadanie", "Obiad", "Kolacja", "Meal prep"]
+  },
+  {
+    title: "Dieta",
+    items: ["Dowolna", "Mięsne", "Wegetariańskie", "Wegańskie", "Keto"]
+  },
+  {
+    title: "Trudność",
+    items: ["Dowolna", "Łatwe", "Średnie", "Trudne"]
+  },
+  {
+    title: "Czas",
+    items: ["Dowolna", "Szybkie", "Normalne", "Dłuższe"]
+  },
+  {
+    title: "Kuchnia",
+    items: ["Dowolna", "Polska", "Włoska", "Azjatycka", "Meksykańska"]
+  }
+];

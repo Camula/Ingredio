@@ -7,8 +7,11 @@ import GenerateTab from "./components/GenerateTab";
 import SavedTab from "./components/SavedTab";
 import ShoppingTab from "./components/ShoppingTab";
 import AccountTab from "./components/AccountTab";
-import { API_AUTH, API_FRIDGE, API_RECIPE } from "./constants";
+import { API_AUTH, API_FRIDGE, API_RECIPE, RECIPE_CATEGORY_GROUPS } from "./constants";
 import { ingredientKey, normalizeText, toIngredient } from "./utils/ingredients";
+
+const createInitialCategoryState = () =>
+  Object.fromEntries(RECIPE_CATEGORY_GROUPS.map((group) => [group.title, null]));
 
 export default function App() {
   const [tab, setTab] = useState("dashboard");
@@ -22,12 +25,14 @@ export default function App() {
   const [ingredients, setIngredients] = useState([]);
   const [selectedIngredientKey, setSelectedIngredientKey] = useState("");
   const [selectedForRecipe, setSelectedForRecipe] = useState([]);
+  const [mainIngredientKey, setMainIngredientKey] = useState("");
 
   const [allowExtra, setAllowExtra] = useState(true);
-  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedCategoryByGroup, setSelectedCategoryByGroup] = useState(createInitialCategoryState);
 
   const [recipes, setRecipes] = useState([]);
-  const [expandedRecipeIndex, setExpandedRecipeIndex] = useState(null);
+  const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [historyRecipes, setHistoryRecipes] = useState([]);
   const [loadingRecipe, setLoadingRecipe] = useState(false);
 
   const [savedRecipes, setSavedRecipes] = useState([]);
@@ -43,6 +48,68 @@ export default function App() {
     () => ingredients.find((item) => ingredientKey(item) === selectedIngredientKey) || null,
     [ingredients, selectedIngredientKey]
   );
+
+  const selectedIngredients = useMemo(() => {
+    const set = new Set(selectedForRecipe);
+    return ingredients.filter((item) => set.has(ingredientKey(item)));
+  }, [ingredients, selectedForRecipe]);
+
+  const selectedCategories = useMemo(
+    () => Object.values(selectedCategoryByGroup).filter(Boolean),
+    [selectedCategoryByGroup]
+  );
+
+  const recipeSignature = (recipe) => {
+    if (!recipe) {
+      return "";
+    }
+
+    const title = normalizeText(recipe.title || "");
+    const ingredientsPart = Array.isArray(recipe.ingredients)
+      ? recipe.ingredients
+          .map((item) =>
+            normalizeText(typeof item === "string" ? item : item?.name || item?.title || "")
+          )
+          .join("|")
+      : "";
+    const stepsPart = Array.isArray(recipe.steps)
+      ? recipe.steps.map((step) => normalizeText(step)).join("|")
+      : "";
+    const categoriesPart = Array.isArray(recipe.categories)
+      ? recipe.categories.map((item) => normalizeText(item)).join("|")
+      : "";
+
+    return `${title}__${ingredientsPart}__${stepsPart}__${categoriesPart}`;
+  };
+
+  const addRecipesToHistory = (items) => {
+    const incoming = Array.isArray(items) ? items.filter(Boolean) : [];
+    if (!incoming.length) {
+      return;
+    }
+
+    setHistoryRecipes((prev) => {
+      const combined = [...incoming, ...prev];
+      const seen = new Set();
+      const next = [];
+
+      for (const recipe of combined) {
+        const signature = recipeSignature(recipe);
+        if (!signature || seen.has(signature)) {
+          continue;
+        }
+
+        seen.add(signature);
+        next.push(recipe);
+
+        if (next.length >= 5) {
+          break;
+        }
+      }
+
+      return next;
+    });
+  };
 
   const refreshIngredients = async (customToken) => {
     try {
@@ -70,8 +137,18 @@ export default function App() {
         return filtered.length ? filtered : keys;
       });
 
-      if (selectedIngredientKey && !normalized.some((item) => ingredientKey(item) === selectedIngredientKey)) {
+      if (
+        selectedIngredientKey &&
+        !normalized.some((item) => ingredientKey(item) === selectedIngredientKey)
+      ) {
         setSelectedIngredientKey("");
+      }
+
+      if (
+        mainIngredientKey &&
+        !normalized.some((item) => ingredientKey(item) === mainIngredientKey)
+      ) {
+        setMainIngredientKey("");
       }
     } catch {
       setIngredients([]);
@@ -153,9 +230,12 @@ export default function App() {
     setIngredients([]);
     setSelectedIngredientKey("");
     setSelectedForRecipe([]);
+    setMainIngredientKey("");
+    setSelectedCategoryByGroup(createInitialCategoryState());
     setRecipes([]);
+    setSelectedRecipe(null);
+    setHistoryRecipes([]);
     setSavedRecipes([]);
-    setExpandedRecipeIndex(null);
     setExpandedSavedId(null);
     setTab("dashboard");
     showMessage("Wylogowano");
@@ -168,7 +248,9 @@ export default function App() {
       return false;
     }
 
-    const duplicate = ingredients.some((item) => ingredientKey(item) === normalizeText(normalizedName));
+    const duplicate = ingredients.some(
+      (item) => ingredientKey(item) === normalizeText(normalizedName)
+    );
     if (duplicate) {
       showMessage("Składnik już istnieje");
       return false;
@@ -248,12 +330,15 @@ export default function App() {
     }
 
     try {
-      const res = await fetch(`${API_FRIDGE}/ingredients/${encodeURIComponent(selectedIngredient.name)}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`
+      const res = await fetch(
+        `${API_FRIDGE}/ingredients/${encodeURIComponent(selectedIngredient.name)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
         }
-      });
+      );
 
       const data = await res.json();
 
@@ -290,6 +375,7 @@ export default function App() {
 
       setSelectedIngredientKey("");
       setSelectedForRecipe([]);
+      setMainIngredientKey("");
       await refreshIngredients();
       showMessage("Wyczyszczono lodówkę");
       return true;
@@ -301,9 +387,18 @@ export default function App() {
 
   const toggleIngredientForRecipe = (item) => {
     const key = ingredientKey(item);
-    setSelectedForRecipe((prev) =>
-      prev.includes(key) ? prev.filter((value) => value !== key) : [...prev, key]
-    );
+
+    setSelectedForRecipe((prev) => {
+      const next = prev.includes(key)
+        ? prev.filter((value) => value !== key)
+        : [...prev, key];
+
+      if (!next.includes(mainIngredientKey)) {
+        setMainIngredientKey("");
+      }
+
+      return next;
+    });
   };
 
   const selectAllForRecipe = () => {
@@ -312,24 +407,18 @@ export default function App() {
 
   const clearAllForRecipe = () => {
     setSelectedForRecipe([]);
+    setMainIngredientKey("");
   };
 
-  const toggleCategory = (category, checked) => {
-    if (category === "__allow_extra__") {
-      setAllowExtra(checked);
-      return;
-    }
-
-    setSelectedCategories((prev) => {
-      if (prev.includes(category)) {
-        return prev.filter((item) => item !== category);
-      }
-      return [...prev, category];
-    });
+  const selectCategoryForGroup = (groupTitle, category) => {
+    setSelectedCategoryByGroup((prev) => ({
+      ...prev,
+      [groupTitle]: category === "Dowolna" ? null : category
+    }));
   };
 
   const resetCategories = () => {
-    setSelectedCategories([]);
+    setSelectedCategoryByGroup(createInitialCategoryState());
   };
 
   const generateRecipes = async (items) => {
@@ -354,7 +443,8 @@ export default function App() {
           ingredients: payloadItems,
           preferences: {
             allowExtra,
-            categories: selectedCategories
+            categories: selectedCategories,
+            mainIngredient: mainIngredientKey
           }
         })
       });
@@ -371,10 +461,18 @@ export default function App() {
         return false;
       }
 
-      setRecipes(data);
-      setExpandedRecipeIndex(null);
+      const nextRecipes = data.slice(0, 2);
+
+      if (nextRecipes.length < 2) {
+        showMessage("Nieprawidłowa odpowiedź przepisu");
+        return false;
+      }
+
+      addRecipesToHistory(recipes);
+      setSelectedRecipe(null);
+      setRecipes(nextRecipes);
       setTab("generate");
-      showMessage("Wygenerowano 3 przepisy");
+      showMessage("Wygenerowano");
       return true;
     } catch {
       showMessage("Błąd połączenia");
@@ -382,6 +480,18 @@ export default function App() {
     } finally {
       setLoadingRecipe(false);
     }
+  };
+
+  const chooseGeneratedRecipe = (index) => {
+    const chosen = recipes[index];
+    if (!chosen) {
+      return;
+    }
+
+    const discarded = recipes.filter((_, recipeIndex) => recipeIndex !== index);
+
+    setSelectedRecipe(chosen);
+    addRecipesToHistory(discarded);
   };
 
   const quickGenerate = async () => {
@@ -499,7 +609,7 @@ export default function App() {
                 selectedCount={selectedForRecipe.length}
                 recipeCount={recipes.length}
                 savedCount={savedRecipes.length}
-                lastRecipeTitle={recipes[0]?.title}
+                lastRecipeTitle={selectedRecipe?.title || recipes[0]?.title}
                 onQuickGenerate={quickGenerate}
                 onGoGenerate={goGenerateTab}
                 onGoFridge={goFridgeTab}
@@ -525,21 +635,33 @@ export default function App() {
 
             {tab === "generate" ? (
               <GenerateTab
-                allowExtra={allowExtra}
-                selectedCategories={selectedCategories}
+                ingredients={ingredients}
+                selectedIngredients={selectedIngredients}
+                selectedIngredientKeys={selectedForRecipe}
                 selectedForRecipeCount={selectedForRecipe.length}
-                onToggleCategory={toggleCategory}
-                onResetCategories={resetCategories}
+                mainIngredientKey={mainIngredientKey}
+                onSetMainIngredient={(item) =>
+                  setMainIngredientKey(item ? ingredientKey(item) : "")
+                }
+                allowExtra={allowExtra}
+                selectedCategoryByGroup={selectedCategoryByGroup}
+                onSelectCategory={selectCategoryForGroup}
                 onSelectAllForRecipe={selectAllForRecipe}
                 onClearAllForRecipe={clearAllForRecipe}
+                onToggleRecipeSelection={toggleIngredientForRecipe}
+                onRemoveSelectedIngredient={toggleIngredientForRecipe}
                 onGenerate={() =>
-                  generateRecipes(ingredients.filter((item) => selectedForRecipe.includes(ingredientKey(item))))
+                  generateRecipes(
+                    ingredients.filter((item) => selectedForRecipe.includes(ingredientKey(item)))
+                  )
                 }
                 loading={loadingRecipe}
                 recipes={recipes}
-                expandedRecipeIndex={expandedRecipeIndex}
-                setExpandedRecipeIndex={setExpandedRecipeIndex}
+                selectedRecipe={selectedRecipe}
+                historyRecipes={historyRecipes}
+                onChooseRecipe={chooseGeneratedRecipe}
                 onSaveRecipe={saveRecipe}
+                onResetCategories={resetCategories}
               />
             ) : null}
 

@@ -96,7 +96,7 @@ def get_user_email(auth_header):
         raise HTTPException(status_code=401, detail="Błędny token")
     return email
 
-def build_cache_key(items, allow_extra, categories):
+def build_cache_key(items, allow_extra, categories, main_ingredient):
     payload = {
         "ingredients": sorted(
             list(
@@ -108,7 +108,8 @@ def build_cache_key(items, allow_extra, categories):
             )
         ),
         "allowExtra": bool(allow_extra),
-        "categories": sorted([clean(c) for c in categories if clean(c)])
+        "categories": sorted([clean(c) for c in categories if clean(c)]),
+        "mainIngredient": normalize(main_ingredient or "")
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -132,35 +133,30 @@ def extract_json_array(text):
 
     return raw
 
-def build_prompt(items, allow_extra, categories):
+def build_prompt(items, allow_extra, categories, main_ingredient):
     ingredient_text = ", ".join(
         [ingredient_prompt_name(i) for i in items if clean(ingredient_prompt_name(i))]
     )
 
     category_text = ", ".join(categories) if categories else "dowolna"
+    main_text = f"Główny składnik: {main_ingredient}." if main_ingredient else ""
 
     if allow_extra:
         return f"""
-Wygeneruj po polsku dokładnie 3 różne przepisy.
+Wygeneruj po polsku dokładnie 2 różne przepisy.
 
+{main_text}
 Kategoria lub charakter przepisów: {category_text}.
 Składniki użytkownika: {ingredient_text}.
 
 Zasady:
 - używaj dokładnych nazw składników
-- ingredienty mają być krótkie i czytelne
-- przepisy mają być różne od siebie
+- przepisy mają być różne
+- skup się na głównym składniku jeśli podany
 - możesz dodać brakujące składniki
-- zwróć wyłącznie poprawny JSON
-- nie dodawaj żadnego tekstu poza JSON
+- zwróć wyłącznie JSON
 
-Format odpowiedzi:
 [
-  {{
-    "title": "...",
-    "ingredients": ["..."],
-    "steps": ["..."]
-  }},
   {{
     "title": "...",
     "ingredients": ["..."],
@@ -174,26 +170,19 @@ Format odpowiedzi:
 ]
 """
     return f"""
-Wygeneruj po polsku dokładnie 3 różne przepisy.
+Wygeneruj po polsku dokładnie 2 różne przepisy.
 
+{main_text}
 Kategoria lub charakter przepisów: {category_text}.
 Użyj tylko tych składników: {ingredient_text}.
 
 Zasady:
-- używaj dokładnych nazw składników
-- ingredienty mają być krótkie i czytelne
-- przepisy mają być różne od siebie
+- przepisy mają być różne
+- skup się na głównym składniku jeśli podany
 - nie dodawaj innych składników
-- zwróć wyłącznie poprawny JSON
-- nie dodawaj żadnego tekstu poza JSON
+- zwróć wyłącznie JSON
 
-Format odpowiedzi:
 [
-  {{
-    "title": "...",
-    "ingredients": ["..."],
-    "steps": ["..."]
-  }},
   {{
     "title": "...",
     "ingredients": ["..."],
@@ -251,11 +240,12 @@ def generate(req: Req):
     items = req.ingredients or []
     allow_extra = req.preferences.get("allowExtra", True)
     categories = req.preferences.get("categories", [])
+    main_ingredient = req.preferences.get("mainIngredient")
 
     if isinstance(categories, str):
         categories = [categories] if clean(categories) else []
 
-    cache_key = build_cache_key(items, allow_extra, categories)
+    cache_key = build_cache_key(items, allow_extra, categories, main_ingredient)
 
     cursor.execute(
         "SELECT data FROM recipes WHERE email='cache' AND cache_key=? ORDER BY id DESC LIMIT 1",
@@ -267,14 +257,14 @@ def generate(req: Req):
         try:
             cached_data = json.loads(cached[0])
             if isinstance(cached_data, list):
-                return cached_data
+                return cached_data[:2]
         except Exception:
             pass
 
     if not client:
         raise HTTPException(status_code=500, detail="Brak klucza API")
 
-    prompt = build_prompt(items, allow_extra, categories)
+    prompt = build_prompt(items, allow_extra, categories, main_ingredient)
 
     try:
         res = client.chat.completions.create(
@@ -296,13 +286,13 @@ def generate(req: Req):
     )
 
     sanitized = []
-    for recipe in raw_recipes[:3]:
+    for recipe in raw_recipes[:2]:
         cleaned = sanitize_recipe(recipe, input_names, categories)
         if cleaned:
             sanitized.append(cleaned)
 
-    if len(sanitized) < 3:
-        raise HTTPException(status_code=500, detail="AI nie zwróciło 3 poprawnych przepisów")
+    if len(sanitized) < 2:
+        raise HTTPException(status_code=500, detail="AI nie zwróciło 2 poprawnych przepisów")
 
     cursor.execute(
         "DELETE FROM recipes WHERE email='cache' AND cache_key=?",
