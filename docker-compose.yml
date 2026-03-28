@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  auth-service:
+    build: ./services/auth-service
+    ports:
+      - "8001:8000"
+
+  fridge-service:
+    build: ./services/fridge-service
+    ports:
+      - "8002:8000"
+
+  recipe-service:
+    build: ./services/recipe-service
+    ports:
+      - "8003:8000"
+    env_file:
+      - ./services/recipe-service/.env
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
