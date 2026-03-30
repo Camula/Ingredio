@@ -35,7 +35,7 @@ export default function App() {
 
   const auth = useAuth(showMessage, handleLoginSuccess, handleLogoutSuccess);
   const fridge = useFridge(auth.token, showMessage);
-  const recipesState = useRecipes(showMessage);
+  const recipesState = useRecipes(auth.token, showMessage);
   const saved = useSavedRecipes(auth.token, showMessage);
 
   return (

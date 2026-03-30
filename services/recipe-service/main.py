@@ -1,11 +1,14 @@
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import os
-from dotenv import load_dotenv
 import sqlite3
-import json
 import jwt
+import os
+import json
+import traceback
+from typing import List, Dict, Any
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from dotenv import load_dotenv
 from openai import OpenAI
 
 load_dotenv()
@@ -15,334 +18,134 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-api_key = os.getenv("API_KEY")
-client = OpenAI(api_key=api_key) if api_key else None
-SECRET = "ingredio_secret_key_2026_minimum_32_chars"
+SECRET_KEY = "super-tajny-klucz-ingredio"
+ALGORITHM = "HS256"
+security = HTTPBearer()
 
-conn = sqlite3.connect("recipes.db", check_same_thread=False)
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS recipes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT,
-    cache_key TEXT,
-    data TEXT
-)
-""")
-
-cursor.execute("PRAGMA table_info(recipes)")
-existing_columns = {row[1] for row in cursor.fetchall()}
-
-if "cache_key" not in existing_columns:
-    cursor.execute("ALTER TABLE recipes ADD COLUMN cache_key TEXT DEFAULT ''")
-
-conn.commit()
-
-class Req(BaseModel):
-    ingredients: list = []
-    preferences: dict = {}
-
-def clean(value):
-    return str(value).strip() if value is not None else ""
-
-def normalize(value):
-    return clean(value).lower()
-
-def ingredient_name(item):
-    if isinstance(item, dict):
-        return clean(item.get("name"))
-    return clean(item)
-
-def ingredient_quantity(item):
-    if isinstance(item, dict):
-        return clean(item.get("quantity"))
-    return ""
-
-def ingredient_unit(item):
-    if isinstance(item, dict):
-        return clean(item.get("unit"))
-    return ""
-
-def ingredient_prompt_name(item):
-    return ingredient_name(item)
-
-def ingredient_display(item):
-    name = ingredient_name(item)
-    quantity = ingredient_quantity(item)
-    unit = ingredient_unit(item)
-    parts = [name]
-    if quantity:
-        parts.append(quantity)
-    if unit:
-        parts.append(unit)
-    return " ".join(parts).strip()
-
-def get_user_email(auth_header):
-    if not auth_header or " " not in auth_header:
-        raise HTTPException(status_code=401, detail="Brak tokena")
-    token = auth_header.split(" ", 1)[1]
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        decoded = jwt.decode(token, SECRET, algorithms=["HS256"])
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Błędny token")
+        return email
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Błędny token")
-    email = decoded.get("email")
-    if not email:
-        raise HTTPException(status_code=401, detail="Błędny token")
-    return email
 
-def build_cache_key(items, allow_extra, categories, main_ingredient):
-    payload = {
-        "ingredients": sorted(
-            list(
-                set(
-                    normalize(ingredient_prompt_name(item))
-                    for item in items
-                    if clean(ingredient_prompt_name(item))
-                )
-            )
-        ),
-        "allowExtra": bool(allow_extra),
-        "categories": sorted([clean(c) for c in categories if clean(c)]),
-        "mainIngredient": normalize(main_ingredient or "")
-    }
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+def init_db():
+    conn = sqlite3.connect("recipes.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS saved_recipes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT,
+            recipe_data TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-def extract_json_array(text):
-    if not text:
-        raise HTTPException(status_code=500, detail="Pusta odpowiedź AI")
+init_db()
 
-    start = text.find("[")
-    end = text.rfind("]") + 1
+class Preferences(BaseModel):
+    allowExtra: bool
+    categories: List[str]
+    mainIngredient: str
 
-    if start == -1 or end == 0:
-        raise HTTPException(status_code=500, detail="Nieprawidłowy format odpowiedzi AI")
+class GenerateRequest(BaseModel):
+    ingredients: List[Dict[str, str]]
+    preferences: Preferences
 
-    raw = json.loads(text[start:end])
-
-    if isinstance(raw, dict) and isinstance(raw.get("recipes"), list):
-        raw = raw["recipes"]
-
-    if not isinstance(raw, list):
-        raise HTTPException(status_code=500, detail="Nieprawidłowy format odpowiedzi AI")
-
-    return raw
-
-def build_prompt(items, allow_extra, categories, main_ingredient):
-    ingredient_text = ", ".join(
-        [ingredient_prompt_name(i) for i in items if clean(ingredient_prompt_name(i))]
-    )
-
-    category_text = ", ".join(categories) if categories else "dowolna"
-    main_text = f"Główny składnik: {main_ingredient}." if main_ingredient else ""
-
-    if allow_extra:
-        return f"""
-Wygeneruj po polsku dokładnie 2 różne przepisy.
-
-{main_text}
-Kategoria lub charakter przepisów: {category_text}.
-Składniki użytkownika: {ingredient_text}.
-
-Zasady:
-- używaj dokładnych nazw składników
-- przepisy mają być różne
-- skup się na głównym składniku jeśli podany
-- możesz dodać brakujące składniki
-- zwróć wyłącznie JSON
-
-[
-  {{
-    "title": "...",
-    "ingredients": ["..."],
-    "steps": ["..."]
-  }},
-  {{
-    "title": "...",
-    "ingredients": ["..."],
-    "steps": ["..."]
-  }}
-]
-"""
-    return f"""
-Wygeneruj po polsku dokładnie 2 różne przepisy.
-
-{main_text}
-Kategoria lub charakter przepisów: {category_text}.
-Użyj tylko tych składników: {ingredient_text}.
-
-Zasady:
-- przepisy mają być różne
-- skup się na głównym składniku jeśli podany
-- nie dodawaj innych składników
-- zwróć wyłącznie JSON
-
-[
-  {{
-    "title": "...",
-    "ingredients": ["..."],
-    "steps": ["..."]
-  }},
-  {{
-    "title": "...",
-    "ingredients": ["..."],
-    "steps": ["..."]
-  }}
-]
-"""
-
-def sanitize_recipe(recipe, input_names, categories):
-    if not isinstance(recipe, dict):
-        return None
-
-    title = clean(recipe.get("title"))
-    ingredients = recipe.get("ingredients", [])
-    steps = recipe.get("steps", [])
-
-    if not title or not isinstance(ingredients, list) or not isinstance(steps, list):
-        return None
-
-    clean_ingredients = []
-    for item in ingredients:
-        value = clean(item)
-        if value:
-            clean_ingredients.append(value)
-
-    clean_steps = []
-    for step in steps:
-        value = clean(step)
-        if value:
-            clean_steps.append(value)
-
-    if not clean_ingredients or not clean_steps:
-        return None
-
-    missing = []
-    for item in clean_ingredients:
-        if normalize(item) not in input_names:
-            missing.append(item)
-
-    return {
-        "title": title,
-        "ingredients": clean_ingredients,
-        "steps": clean_steps,
-        "missing_ingredients": missing,
-        "categories": categories
-    }
+class SaveRequest(BaseModel):
+    recipe: Dict[str, Any]
 
 @app.post("/recipe/generate")
-def generate(req: Req):
-    items = req.ingredients or []
-    allow_extra = req.preferences.get("allowExtra", True)
-    categories = req.preferences.get("categories", [])
-    main_ingredient = req.preferences.get("mainIngredient")
+def generate_recipe(request: GenerateRequest, user_email: str = Depends(get_current_user)):
+    api_key = os.getenv("API_KEY")
+    if not api_key:
+        print("BRAK KLUCZA API W PLIKU ENV!")
+        raise HTTPException(status_code=500, detail="Brak klucza API. Sprawdź plik .env")
 
-    if isinstance(categories, str):
-        categories = [categories] if clean(categories) else []
+    ingredients_list = ", ".join([f"{item['name']} ({item['quantity']} {item['unit']})" for item in request.ingredients])
+    
+    prompt = f"Wygeneruj 2 przepisy kulinarne w formacie JSON.\n"
+    prompt += f"Posiadam składniki: {ingredients_list}.\n"
+    if request.preferences.mainIngredient:
+        prompt += f"Główny składnik to: {request.preferences.mainIngredient}.\n"
+    if not request.preferences.allowExtra:
+        prompt += "Użyj TYLKO tych składników.\n"
+    if request.preferences.categories:
+        prompt += f"Kategorie/tagi: {', '.join(request.preferences.categories)}.\n"
+        
+    prompt += """Zwróć TYLKO czystą tablicę JSON, bez żadnego tekstu wprowadzającego.
+    Format JSON to tablica 2 obiektów, każdy obiekt ma mieć klucze:
+    "title" (string),
+    "ingredients" (tablica stringów z ilościami),
+    "steps" (tablica stringów z instrukcjami),
+    "categories" (tablica stringów z tagami)."""
 
-    cache_key = build_cache_key(items, allow_extra, categories, main_ingredient)
-
-    cursor.execute(
-        "SELECT data FROM recipes WHERE email='cache' AND cache_key=? ORDER BY id DESC LIMIT 1",
-        (cache_key,)
-    )
-    cached = cursor.fetchone()
-
-    if cached:
-        try:
-            cached_data = json.loads(cached[0])
-            if isinstance(cached_data, list):
-                return cached_data[:2]
-        except Exception:
-            pass
-
-    if not client:
-        raise HTTPException(status_code=500, detail="Brak klucza API")
-
-    prompt = build_prompt(items, allow_extra, categories, main_ingredient)
+    client = OpenAI(api_key=api_key)
 
     try:
-        res = client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.9
+            temperature=0.7
         )
-        text = res.choices[0].message.content
-        raw_recipes = extract_json_array(text)
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Błąd generowania przepisu")
+        content = response.choices[0].message.content
+        
+        print(f"--- ODPOWIEDŹ AI ---\n{content}\n--------------------")
+        
+        start_idx = content.find('[')
+        end_idx = content.rfind(']') + 1
+        
+        if start_idx != -1 and end_idx != 0:
+            clean_json = content[start_idx:end_idx]
+        else:
+            clean_json = content
 
-    input_names = set(
-        normalize(ingredient_prompt_name(item))
-        for item in items
-        if clean(ingredient_prompt_name(item))
-    )
-
-    sanitized = []
-    for recipe in raw_recipes[:2]:
-        cleaned = sanitize_recipe(recipe, input_names, categories)
-        if cleaned:
-            sanitized.append(cleaned)
-
-    if len(sanitized) < 2:
-        raise HTTPException(status_code=500, detail="AI nie zwróciło 2 poprawnych przepisów")
-
-    cursor.execute(
-        "DELETE FROM recipes WHERE email='cache' AND cache_key=?",
-        (cache_key,)
-    )
-    cursor.execute(
-        "INSERT INTO recipes (email, cache_key, data) VALUES (?, ?, ?)",
-        ("cache", cache_key, json.dumps(sanitized, ensure_ascii=False))
-    )
-    conn.commit()
-
-    return sanitized
-
-@app.post("/recipe/save")
-def save(data: dict, Authorization: str = Header(None)):
-    email = get_user_email(Authorization)
-    recipe = data.get("recipe")
-
-    if not recipe:
-        raise HTTPException(status_code=400, detail="Brak przepisu")
-
-    cursor.execute(
-        "INSERT INTO recipes (email, cache_key, data) VALUES (?, ?, ?)",
-        (email, "", json.dumps(recipe, ensure_ascii=False))
-    )
-    conn.commit()
-    return {"ok": True}
+        recipes = json.loads(clean_json)
+        return recipes
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Błąd przetwarzania odpowiedzi od AI. Zobacz logi serwera.")
 
 @app.get("/recipe/saved")
-def saved(Authorization: str = Header(None)):
-    email = get_user_email(Authorization)
-    cursor.execute(
-        "SELECT id, data FROM recipes WHERE email=? ORDER BY id DESC",
-        (email,)
-    )
+def get_saved_recipes(user_email: str = Depends(get_current_user)):
+    conn = sqlite3.connect("recipes.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, recipe_data FROM saved_recipes WHERE user_email = ?", (user_email,))
     rows = cursor.fetchall()
-    return [
-        {
-            "id": row[0],
-            "recipe": json.loads(row[1])
-        }
-        for row in rows
-    ]
+    conn.close()
+    
+    results = []
+    for row in rows:
+        data = json.loads(row["recipe_data"])
+        data["id"] = row["id"]
+        results.append(data)
+    return results
+
+@app.post("/recipe/save")
+def save_recipe(request: SaveRequest, user_email: str = Depends(get_current_user)):
+    conn = sqlite3.connect("recipes.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO saved_recipes (user_email, recipe_data) VALUES (?, ?)", 
+                   (user_email, json.dumps(request.recipe)))
+    conn.commit()
+    conn.close()
+    return {"message": "Zapisano"}
 
 @app.delete("/recipe/saved/{recipe_id}")
-def delete_saved(recipe_id: int, Authorization: str = Header(None)):
-    email = get_user_email(Authorization)
-    cursor.execute(
-        "DELETE FROM recipes WHERE id=? AND email=?",
-        (recipe_id, email)
-    )
+def delete_saved_recipe(recipe_id: int, user_email: str = Depends(get_current_user)):
+    conn = sqlite3.connect("recipes.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM saved_recipes WHERE id = ? AND user_email = ?", (recipe_id, user_email))
     conn.commit()
-    return {"ok": True}
+    conn.close()
+    return {"message": "Usunięto"}

@@ -5,7 +5,7 @@ import { normalizeText, toIngredient } from "../utils/ingredients";
 const createInitialCategoryState = () =>
   Object.fromEntries(RECIPE_CATEGORY_GROUPS.map((group) => [group.title, null]));
 
-export function useRecipes(showMessage) {
+export function useRecipes(token, showMessage) {
   const [allowExtra, setAllowExtra] = useState(true);
   const [selectedCategoryByGroup, setSelectedCategoryByGroup] = useState(createInitialCategoryState);
   const [recipes, setRecipes] = useState([]);
@@ -65,7 +65,10 @@ export function useRecipes(showMessage) {
     try {
       const res = await fetch(`${API_RECIPE}/recipe/generate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           ingredients: payloadItems,
           preferences: { allowExtra, categories: selectedCategories, mainIngredient: mainIngredientKey }
