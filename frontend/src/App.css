@@ -277,3 +277,81 @@ select {
     grid-template-columns: 1fr;
   }
 }
+.missing {
+  color: #ff6b6b;
+}
+
+.saved-list {
+  display: grid;
+  gap: 12px;
+}
+
+.saved-head {
+  display: flex;
+  justify-content: space-between;
+}
+
+.shopping-sections {
+  display: grid;
+  gap: 24px;
+}
+
+.shopping-box {
+  border: 1px solid #333;
+  background: #1e1e1e;
+  padding: 12px;
+}
+
+.shopping-box h3 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  color: #c084fc;
+}
+
+.shopping-list {
+  display: grid;
+  gap: 8px;
+}
+
+.shopping-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  transition: opacity 0.2s;
+}
+
+.shopping-item.bought {
+  opacity: 0.5;
+  text-decoration: line-through;
+  background: #121212;
+}
+
+.shopping-info {
+  flex: 1;
+  text-align: left;
+}
+
+.shopping-source {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.del-btn {
+  padding: 4px 8px;
+  font-weight: bold;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .recipe-grid {
+    grid-template-columns: 1fr;
+  }
+}

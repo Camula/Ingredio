@@ -2,7 +2,8 @@ export default function SavedTab({
   savedRecipes,
   expandedSavedId,
   setExpandedSavedId,
-  onDeleteSavedRecipe
+  onDeleteSavedRecipe,
+  onAddMissingToShopping
 }) {
   return (
     <div className="panel">
@@ -16,23 +17,25 @@ export default function SavedTab({
         {savedRecipes.map((item) => (
           <div key={item.id} className="saved-item">
             <div className="saved-head">
-              <button
-                onClick={() => setExpandedSavedId(expandedSavedId === item.id ? null : item.id)}
-              >
-                {item.recipe?.title || "Bez tytułu"}
+              <button onClick={() => setExpandedSavedId(expandedSavedId === item.id ? null : item.id)}>
+                {item.title || "Bez tytułu"}
               </button>
               <button onClick={() => onDeleteSavedRecipe(item.id)}>Usuń</button>
             </div>
 
             {expandedSavedId === item.id ? (
-              <div className="saved-body">
+              <div className="saved-body" style={{ textAlign: "left" }}>
                 <div className="saved-meta">
-                  {item.recipe?.categories?.length ? item.recipe.categories.join(", ") : "Dowolna"}
+                  {item.categories?.length ? item.categories.join(", ") : "Dowolna"}
+                </div>
+                
+                <div className="actions" style={{ marginBottom: 8, marginTop: 8 }}>
+                  <button onClick={() => onAddMissingToShopping(item)}>Dodaj brakujące do listy zakupów</button>
                 </div>
 
                 <h4>Składniki</h4>
                 <ul>
-                  {(item.recipe?.ingredients || []).map((ingredient, index) => (
+                  {(item.ingredients || []).map((ingredient, index) => (
                     <li key={`${item.id}-ingredient-${index}`}>
                       {typeof ingredient === "string" ? ingredient : ingredient?.name || ""}
                     </li>
@@ -41,7 +44,7 @@ export default function SavedTab({
 
                 <h4>Kroki</h4>
                 <ol>
-                  {(item.recipe?.steps || []).map((step, index) => (
+                  {(item.steps || []).map((step, index) => (
                     <li key={`${item.id}-step-${index}`}>{step}</li>
                   ))}
                 </ol>

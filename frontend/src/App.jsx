@@ -8,13 +8,14 @@ import GenerateTab from "./components/GenerateTab";
 import SavedTab from "./components/SavedTab";
 import ShoppingTab from "./components/ShoppingTab";
 import AccountTab from "./components/AccountTab";
-import { ingredientKey } from "./utils/ingredients";
+import { ingredientKey, toIngredient, getMissingIngredients } from "./utils/ingredients";
 
 import { useMessage } from "./hooks/useMessage";
 import { useAuth } from "./hooks/useAuth";
 import { useFridge } from "./hooks/useFridge";
 import { useRecipes } from "./hooks/useRecipes";
 import { useSavedRecipes } from "./hooks/useSavedRecipes";
+import { useShoppingList } from "./hooks/useShoppingList";
 
 export default function App() {
   const [tab, setTab] = useState("dashboard");
@@ -23,6 +24,7 @@ export default function App() {
   const handleLoginSuccess = async (customToken) => {
     await fridge.refreshIngredients(customToken);
     await saved.loadSavedRecipes(customToken);
+    await shopping.loadList(customToken);
     setTab("dashboard");
   };
 
@@ -30,6 +32,7 @@ export default function App() {
     fridge.clearFridgeState();
     recipesState.clearRecipesState();
     saved.clearSavedState();
+    shopping.clearShoppingState();
     setTab("dashboard");
   };
 
@@ -37,6 +40,37 @@ export default function App() {
   const fridge = useFridge(auth.token, showMessage);
   const recipesState = useRecipes(auth.token, showMessage);
   const saved = useSavedRecipes(auth.token, showMessage);
+  const shopping = useShoppingList(auth.token, showMessage);
+
+  const handleAddMissingToShopping = async (recipe) => {
+    const missing = getMissingIngredients(recipe.ingredients, fridge.ingredients);
+    if (missing.length === 0) {
+      showMessage("Masz już wszystkie składniki w lodówce!");
+      return;
+    }
+
+    const payload = missing.map(item => {
+      const ing = toIngredient(item);
+      return {
+        name: ing.name,
+        quantity: ing.quantity || "",
+        unit: ing.unit || "",
+        source: recipe.title || "Przepis"
+      };
+    });
+
+    const success = await shopping.addBulkItems(payload);
+    if (success) {
+      showMessage(`Dodano ${payload.length} brakujących składników do listy.`);
+    }
+  };
+
+  const handleMoveToFridge = async () => {
+    const success = await shopping.moveToFridge();
+    if (success) {
+      fridge.refreshIngredients();
+    }
+  };
 
   return (
     <div className="app">
@@ -54,17 +88,8 @@ export default function App() {
         <div className="auth-shell">
           <div className="panel auth-panel">
             <h2>Logowanie</h2>
-            <input
-              value={auth.email}
-              onChange={(e) => auth.setEmail(e.target.value)}
-              placeholder="Email"
-            />
-            <input
-              value={auth.password}
-              onChange={(e) => auth.setPassword(e.target.value)}
-              placeholder="Hasło"
-              type="password"
-            />
+            <input value={auth.email} onChange={(e) => auth.setEmail(e.target.value)} placeholder="Email" />
+            <input value={auth.password} onChange={(e) => auth.setPassword(e.target.value)} placeholder="Hasło" type="password" />
             <div className="actions">
               <button onClick={auth.register}>Rejestruj</button>
               <button onClick={auth.login}>Zaloguj</button>
@@ -74,7 +99,6 @@ export default function App() {
       ) : (
         <>
           <TabNav tab={tab} onChange={setTab} />
-
           <div className="content">
             {tab === "dashboard" ? (
               <Dashboard
@@ -121,13 +145,7 @@ export default function App() {
                 onClearAllForRecipe={fridge.clearAllForRecipe}
                 onToggleRecipeSelection={fridge.toggleIngredientForRecipe}
                 onRemoveSelectedIngredient={fridge.toggleIngredientForRecipe}
-                onGenerate={() =>
-                  recipesState.generateRecipes(
-                    fridge.ingredients.filter((item) => fridge.selectedForRecipe.includes(ingredientKey(item))),
-                    fridge.mainIngredientKey,
-                    setTab
-                  )
-                }
+                onGenerate={() => recipesState.generateRecipes(fridge.ingredients.filter((item) => fridge.selectedForRecipe.includes(ingredientKey(item))), fridge.mainIngredientKey, setTab)}
                 loading={recipesState.loadingRecipe}
                 recipes={recipesState.recipes}
                 selectedRecipe={recipesState.selectedRecipe}
@@ -135,6 +153,7 @@ export default function App() {
                 onChooseRecipe={recipesState.chooseGeneratedRecipe}
                 onSaveRecipe={saved.saveRecipe}
                 onResetCategories={recipesState.resetCategories}
+                onAddMissingToShopping={handleAddMissingToShopping}
               />
             ) : null}
 
@@ -144,10 +163,22 @@ export default function App() {
                 expandedSavedId={saved.expandedSavedId}
                 setExpandedSavedId={saved.setExpandedSavedId}
                 onDeleteSavedRecipe={saved.deleteSavedRecipe}
+                onAddMissingToShopping={handleAddMissingToShopping}
               />
             ) : null}
 
-            {tab === "shopping" ? <ShoppingTab /> : null}
+            {tab === "shopping" ? (
+              <ShoppingTab 
+                shoppingList={shopping.shoppingList}
+                onAddItem={shopping.addItem}
+                onToggleBought={shopping.toggleBought}
+                onDeleteItem={shopping.deleteItem}
+                onDeleteBought={shopping.deleteBought}
+                onClearList={shopping.clearList}
+                onMoveToFridge={handleMoveToFridge}
+              />
+            ) : null}
+            
             {tab === "account" ? <AccountTab email={auth.email} /> : null}
           </div>
         </>
