@@ -4,14 +4,15 @@ import { ingredientKey, normalizeText, toIngredient } from "../utils/ingredients
 
 export function useFridge(token, showMessage) {
   const [ingredients, setIngredients] = useState([]);
-  const [selectedIngredientKey, setSelectedIngredientKey] = useState("");
   const [selectedForRecipe, setSelectedForRecipe] = useState([]);
   const [mainIngredientKey, setMainIngredientKey] = useState("");
 
-  const selectedIngredient = useMemo(
-    () => ingredients.find((item) => ingredientKey(item) === selectedIngredientKey) || null,
-    [ingredients, selectedIngredientKey]
-  );
+  const selectedIngredient = useMemo(() => {
+    if (selectedForRecipe.length === 1) {
+      return ingredients.find((item) => ingredientKey(item) === selectedForRecipe[0]) || null;
+    }
+    return null;
+  }, [ingredients, selectedForRecipe]);
 
   const selectedIngredients = useMemo(() => {
     const set = new Set(selectedForRecipe);
@@ -39,10 +40,6 @@ export function useFridge(token, showMessage) {
         const filtered = prev.filter((key) => keys.includes(key));
         return filtered.length ? filtered : keys;
       });
-
-      if (selectedIngredientKey && !normalized.some((item) => ingredientKey(item) === selectedIngredientKey)) {
-        setSelectedIngredientKey("");
-      }
 
       if (mainIngredientKey && !normalized.some((item) => ingredientKey(item) === mainIngredientKey)) {
         setMainIngredientKey("");
@@ -91,7 +88,6 @@ export function useFridge(token, showMessage) {
       const data = await res.json();
       if (!res.ok) return showMessage(data.detail || "Błąd edycji"), false;
 
-      setSelectedIngredientKey("");
       await refreshIngredients();
       showMessage("Zapisano zmiany");
       return true;
@@ -100,20 +96,26 @@ export function useFridge(token, showMessage) {
     }
   };
 
-  const deleteSelectedIngredient = async () => {
-    if (!selectedIngredient) return false;
+  const deleteSelectedIngredients = async () => {
+    if (selectedForRecipe.length === 0) return false;
 
     try {
-      const res = await fetch(`${API_FRIDGE}/ingredients/${encodeURIComponent(selectedIngredient.name)}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok) return showMessage(data.detail || "Błąd usuwania"), false;
+      await Promise.all(selectedForRecipe.map(key => {
+        const item = ingredients.find(i => ingredientKey(i) === key);
+        if (item) {
+          return fetch(`${API_FRIDGE}/ingredients/${encodeURIComponent(item.name)}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        }
+      }));
 
-      setSelectedIngredientKey("");
+      const removedKeys = new Set(selectedForRecipe);
+      setSelectedForRecipe([]);
+      if (removedKeys.has(mainIngredientKey)) setMainIngredientKey("");
+      
       await refreshIngredients();
-      showMessage("Usunięto składnik");
+      showMessage("Usunięto wybrane składniki");
       return true;
     } catch {
       return showMessage("Błąd połączenia"), false;
@@ -129,7 +131,6 @@ export function useFridge(token, showMessage) {
       const data = await res.json();
       if (!res.ok) return showMessage(data.detail || "Błąd czyszczenia"), false;
 
-      setSelectedIngredientKey("");
       setSelectedForRecipe([]);
       setMainIngredientKey("");
       await refreshIngredients();
@@ -160,15 +161,14 @@ export function useFridge(token, showMessage) {
 
   const clearFridgeState = () => {
     setIngredients([]);
-    setSelectedIngredientKey("");
     setSelectedForRecipe([]);
     setMainIngredientKey("");
   };
 
   return {
-    ingredients, selectedIngredientKey, setSelectedIngredientKey, selectedForRecipe, mainIngredientKey,
-    setMainIngredientKey, selectedIngredient, selectedIngredients, refreshIngredients, addIngredient,
-    updateSelectedIngredient, deleteSelectedIngredient, clearFridge, toggleIngredientForRecipe,
+    ingredients, selectedForRecipe, mainIngredientKey, setMainIngredientKey, 
+    selectedIngredient, selectedIngredients, refreshIngredients, addIngredient,
+    updateSelectedIngredient, deleteSelectedIngredients, clearFridge, toggleIngredientForRecipe,
     selectAllForRecipe, clearAllForRecipe, clearFridgeState
   };
 }

@@ -116,16 +116,14 @@ export default function App() {
             {tab === "fridge" ? (
               <FridgeTab
                 ingredients={fridge.ingredients}
-                selectedIngredientKey={fridge.selectedIngredientKey}
                 selectedForRecipe={fridge.selectedForRecipe}
                 selectedIngredient={fridge.selectedIngredient}
-                onSelectIngredientForActions={(item) => fridge.setSelectedIngredientKey(ingredientKey(item))}
                 onToggleRecipeSelection={fridge.toggleIngredientForRecipe}
                 onSelectAllForRecipe={fridge.selectAllForRecipe}
                 onClearAllForRecipe={fridge.clearAllForRecipe}
                 onAddIngredient={fridge.addIngredient}
                 onUpdateSelectedIngredient={fridge.updateSelectedIngredient}
-                onDeleteSelectedIngredient={fridge.deleteSelectedIngredient}
+                onDeleteSelectedIngredients={fridge.deleteSelectedIngredients}
                 onClearFridge={fridge.clearFridge}
               />
             ) : null}

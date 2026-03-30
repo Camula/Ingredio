@@ -4,16 +4,14 @@ import { ingredientDisplay, ingredientKey, normalizeText } from "../utils/ingred
 
 export default function FridgeTab({
   ingredients,
-  selectedIngredientKey,
   selectedForRecipe,
   selectedIngredient,
-  onSelectIngredientForActions,
   onToggleRecipeSelection,
   onSelectAllForRecipe,
   onClearAllForRecipe,
   onAddIngredient,
   onUpdateSelectedIngredient,
-  onDeleteSelectedIngredient,
+  onDeleteSelectedIngredients,
   onClearFridge
 }) {
   const [name, setName] = useState("");
@@ -95,6 +93,18 @@ export default function FridgeTab({
     }
   };
 
+  const handleDeleteSelected = () => {
+    if (selectedForRecipe.length > 1) {
+      if (!window.confirm(`Czy na pewno chcesz usunąć ${selectedForRecipe.length} zaznaczone składniki?`)) return;
+    }
+    onDeleteSelectedIngredients();
+  };
+
+  const handleClearFridge = () => {
+    if (!window.confirm("Czy na pewno chcesz usunąć wszystkie składniki z lodówki?")) return;
+    onClearFridge();
+  };
+
   const selectedSet = new Set(selectedForRecipe);
 
   return (
@@ -138,15 +148,15 @@ export default function FridgeTab({
       ) : null}
 
       <div className="toolbar">
-        <button onClick={onSelectAllForRecipe}>Zaznacz wszystkie do przepisu</button>
+        <button onClick={onSelectAllForRecipe}>Zaznacz wszystkie</button>
         <button onClick={onClearAllForRecipe}>Odznacz wszystkie</button>
         <button onClick={startEdit} disabled={!selectedIngredient}>
           Edytuj wybrany
         </button>
-        <button onClick={onDeleteSelectedIngredient} disabled={!selectedIngredient}>
-          Usuń wybrany
+        <button onClick={handleDeleteSelected} disabled={selectedForRecipe.length === 0}>
+          Usuń wybrane
         </button>
-        <button onClick={onClearFridge}>Wyczyść lodówkę</button>
+        <button onClick={handleClearFridge}>Wyczyść lodówkę</button>
       </div>
 
       {editMode && selectedIngredient ? (
@@ -169,20 +179,19 @@ export default function FridgeTab({
       <div className="ingredient-list">
         {ingredients.map((item) => {
           const key = ingredientKey(item);
-          const actionSelected = selectedIngredientKey === key;
           const recipeSelected = selectedSet.has(key);
 
           return (
             <div
               key={key || ingredientDisplay(item)}
-              className={actionSelected ? "ingredient-row selected" : "ingredient-row"}
-              onClick={() => onSelectIngredientForActions(item)}
+              className={recipeSelected ? "ingredient-row selected" : "ingredient-row"}
+              onClick={() => onToggleRecipeSelection(item)}
+              style={{ cursor: "pointer" }}
             >
               <input
                 type="checkbox"
                 checked={recipeSelected}
-                onChange={() => onToggleRecipeSelection(item)}
-                onClick={(e) => e.stopPropagation()}
+                readOnly
               />
               <span>{ingredientDisplay(item)}</span>
             </div>
