@@ -1,0 +1,26 @@
+{
+  "name": "ingredio",
+  "version": "1.0.0",
+  "description": "Smart Fridge & AI Recipe Generator",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "docker compose up",
+    "test": "npm test --workspaces",
+    "test:ui": "npm test -w services/frontend",
+    "test:backend": "npm test -w services/auth-service -w services/fridge-service -w services/recipe-service",
+    "coverage": "npm test --workspaces -- --coverage"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

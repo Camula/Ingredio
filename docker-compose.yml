@@ -1,0 +1,96 @@
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: ingredio-db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - ingredio-network
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: ingredio-auth
+    env_file: .env
+    ports:
+      - "3001:3001"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/ingredio
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT_AUTH=3001
+    depends_on:
+      - mongodb
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - ingredio-network
+
+  fridge-service:
+    build:
+      context: .
+      dockerfile: services/fridge-service/Dockerfile
+    container_name: ingredio-fridge
+    env_file: .env
+    ports:
+      - "3002:3002"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/ingredio
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT_FRIDGE=3002
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - ingredio-network
+
+  recipe-service:
+    build:
+      context: .
+      dockerfile: services/recipe-service/Dockerfile
+    container_name: ingredio-recipe
+    env_file: .env
+    ports:
+      - "3003:3003"
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/ingredio
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT_RECIPE=3003
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - ingredio-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+    container_name: ingredio-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - AUTH_URL=http://auth-service:3001
+      - FRIDGE_URL=http://fridge-service:3002
+      - RECIPE_URL=http://recipe-service:3003
+    command: npm run dev
+    depends_on:
+      - auth-service
+      - fridge-service
+      - recipe-service
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - ingredio-network
+
+networks:
+  ingredio-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
