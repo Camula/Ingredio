@@ -344,13 +344,23 @@ export default function Fridge() {
                           type="number"
                           value={editAmount}
                           onChange={(e) => setEditAmount(e.target.value)}
-                          className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500"
+                          placeholder="Ilość"
+                          className="w-1/2 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500"
                         />
-                        <button onClick={() => handleUpdate(item._id)} className="p-3 bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-500/20">
-                          <Check size={20} />
+                        <input
+                          type="text"
+                          value={editUnit}
+                          onChange={(e) => setEditUnit(e.target.value)}
+                          placeholder="Jedn. (np. g, szt)"
+                          className="w-1/2 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleUpdate(item._id)} className="flex-1 p-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/20 flex justify-center items-center gap-2 text-xs font-black uppercase tracking-widest transition-colors">
+                          <Check size={16} /> Zapisz
                         </button>
-                        <button onClick={() => setEditingId(null)} className="p-3 bg-white/10 text-slate-400 rounded-xl hover:bg-white/20">
-                          <X size={20} />
+                        <button onClick={() => setEditingId(null)} className="flex-1 p-3 bg-white/10 text-slate-400 rounded-xl hover:bg-white/20 hover:text-white flex justify-center items-center gap-2 text-xs font-black uppercase tracking-widest transition-colors">
+                          <X size={16} /> Anuluj
                         </button>
                       </div>
                     </div>

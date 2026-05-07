@@ -27,7 +27,7 @@ export const fridgeService = {
   },
 
   updateFridgeItem: async (id: string, data: Partial<Pick<FridgeItem, 'name' | 'amount' | 'unit'>>): Promise<FridgeItem> => {
-    const response = await api.put(`${API_URL}/${id}`, data);
+    const response = await api.patch(`${API_URL}/${id}`, data);
     return response.data;
   },
 
