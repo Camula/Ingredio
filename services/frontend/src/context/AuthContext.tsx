@@ -5,6 +5,7 @@ import { authService } from '../services/auth.service';
 interface User {
   userId: string;
   email: string;
+  name?: string;
 }
 
 interface AuthContextType {

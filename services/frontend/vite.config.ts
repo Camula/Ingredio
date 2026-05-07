@@ -10,6 +10,9 @@ export default defineConfig({
   ],
   server: {
     host: true,
+    watch: {
+      usePolling: true
+    },
     proxy: {
       '/api/auth': {
         target: process.env.AUTH_URL || 'http://localhost:3001',

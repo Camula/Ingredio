@@ -21,11 +21,15 @@ services:
       - MONGO_URI=mongodb://mongodb:27017/ingredio
       - JWT_SECRET=${JWT_SECRET}
       - PORT_AUTH=3001
+    tty: true
+    stdin_open: true
     depends_on:
       - mongodb
     volumes:
       - .:/app
       - /app/node_modules
+      - /app/services/auth-service/node_modules
+      - /app/packages/shared/node_modules
     networks:
       - ingredio-network
 
@@ -41,9 +45,13 @@ services:
       - MONGO_URI=mongodb://mongodb:27017/ingredio
       - JWT_SECRET=${JWT_SECRET}
       - PORT_FRIDGE=3002
+    tty: true
+    stdin_open: true
     volumes:
       - .:/app
       - /app/node_modules
+      - /app/services/fridge-service/node_modules
+      - /app/packages/shared/node_modules
     networks:
       - ingredio-network
 
@@ -60,9 +68,13 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - PORT_RECIPE=3003
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+    tty: true
+    stdin_open: true
     volumes:
       - .:/app
       - /app/node_modules
+      - /app/services/recipe-service/node_modules
+      - /app/packages/shared/node_modules
     networks:
       - ingredio-network
 
@@ -78,6 +90,8 @@ services:
       - FRIDGE_URL=http://fridge-service:3002
       - RECIPE_URL=http://recipe-service:3003
     command: npm run dev
+    tty: true
+    stdin_open: true
     depends_on:
       - auth-service
       - fridge-service
@@ -85,6 +99,8 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
+      - /app/services/frontend/node_modules
+      - /app/packages/shared/node_modules
     networks:
       - ingredio-network
 

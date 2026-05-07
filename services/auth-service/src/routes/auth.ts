@@ -83,7 +83,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user._id, email: user.email, name: user.name },
       JWT_SECRET,
       { expiresIn: '1h' }
     );
@@ -149,7 +149,14 @@ router.patch('/me', authMiddleware(JWT_SECRET), async (req: any, res) => {
     }
 
     await user.save();
-    res.json({ message: 'Profil zaktualizowany', user });
+    
+    const token = jwt.sign(
+      { userId: user._id, email: user.email, name: user.name },
+      JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    res.json({ message: 'Profil zaktualizowany', user, token });
   } catch (err) {
     res.status(500).json({ error: 'Błąd serwera' });
   }

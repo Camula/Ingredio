@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { authService } from '../services/auth.service';
 import { fridgeService } from '../services/fridge.service';
 import { recipeService } from '../services/recipe.service';
 import { User, Mail, Shield, Bell, Heart, AlertCircle, Trophy, Zap, Flame, Star, ChevronRight, Award, Edit3, Save, X, LogOut } from 'lucide-react';
 import { PremiumBadge } from '../components/ui/PremiumBadge';
 
 export default function Profile() {
-  const { user, logout } = useAuth();
+  const { user, login, logout } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     fridgeItems: 0,
@@ -48,9 +49,16 @@ export default function Profile() {
     navigate('/login');
   };
 
-  const handleSaveProfile = () => {
-    // Tutaj docelowo byłby call do API auth-service, na razie symulujemy UI
-    setIsEditing(false);
+  const handleSaveProfile = async () => {
+    try {
+      const response = await authService.updateMe({ name: editedName });
+      if (response.token) {
+        login(response.token);
+      }
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Failed to update profile', err);
+    }
   };
 
   const container = {

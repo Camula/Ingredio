@@ -110,7 +110,7 @@ export default function Home() {
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <h1 className="text-4xl font-bold tracking-tight text-white font-display">
-              Cześć, <span className="text-emerald-500">{user?.email.split('@')[0]}</span>! 👋
+              Cześć, <span className="text-emerald-500">{user?.name || user?.email.split('@')[0]}</span>! 👋
             </h1>
             <PremiumBadge />
           </div>

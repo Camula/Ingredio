@@ -3,6 +3,7 @@ import { api } from './api';
 export interface RecipeIngredient {
   name: string;
   amount: string;
+  unit?: string;
   isOwned: boolean;
   isStaple?: boolean;
 }

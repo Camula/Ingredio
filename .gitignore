@@ -112,6 +112,6 @@ dist/
 Thumbs.db
 
 # Project specifics
-.planning/todos/pending/
-.planning/research/
+.planning/
+.planning/
 .continue-here.md
